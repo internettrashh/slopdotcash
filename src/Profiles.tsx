@@ -9,9 +9,10 @@ import { transactionUrl } from "./lib/payments/contracts";
 import type { DailyPoints } from "./lib/points-members";
 import { dailyPoints } from "./lib/profile-activity";
 import {
-  assertProfiles,
+  assertProfileDirectory,
   contributorPullSearchUrl,
-  type ProfileIndex,
+  MAX_PROFILE_DIRECTORY_BYTES,
+  type ProfileDirectory,
   profileCounts,
 } from "./lib/profiles";
 import { findProject } from "./lib/projects.mjs";
@@ -37,24 +38,30 @@ import {
 } from "./Presentation";
 
 async function loadProfiles(signal: AbortSignal) {
-  // Reuse stored bytes only after the server revalidates the identity directory.
-  const response = await fetchWithDeadline("/data/profiles.json", {
+  // The directory carries the people and counts of the census without its
+  // issue history, which no page shows. Reuse stored bytes only after the
+  // server revalidates the identity directory.
+  const response = await fetchWithDeadline("/data/profile-directory.json", {
     signal,
     cache: "no-cache",
   });
   if (!response.ok) throw Error("Profiles unavailable");
-  const index = await readBoundedJson(response, 8 * 1024 * 1024, "profiles");
-  assertProfiles(index);
+  const index = await readBoundedJson(
+    response,
+    MAX_PROFILE_DIRECTORY_BYTES,
+    "profiles",
+  );
+  assertProfileDirectory(index);
   return { index };
 }
 
 type ProfileState = PublicResourceState<{
-  index: ProfileIndex;
+  index: ProfileDirectory;
   refreshError?: string;
 }>;
 // Reuse only schema-verified public records, and only after a fresh read fails.
 // A new mount stays loading so a reassigned GitHub login cannot use old identity.
-let lastVerifiedProfiles: ProfileIndex | null = null;
+let lastVerifiedProfiles: ProfileDirectory | null = null;
 
 export function useProfiles(enabled = true): {
   state: ProfileState;

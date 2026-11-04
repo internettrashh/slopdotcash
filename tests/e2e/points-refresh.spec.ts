@@ -114,9 +114,12 @@ async function servePointsSite(page: Page) {
         ? route.fulfill({ status: 503, body: "Points temporarily unavailable" })
         : route.fulfill({ json: members });
     }
-    if (url.pathname === "/data/profiles.json") {
+    if (url.pathname === "/data/profile-directory.json") {
       const directory = JSON.parse(
-        readFileSync(join(process.cwd(), "dist/data/profiles.json"), "utf8"),
+        readFileSync(
+          join(process.cwd(), "dist/data/profile-directory.json"),
+          "utf8",
+        ),
       );
       directory.people.push({
         ...actor,

@@ -1,8 +1,14 @@
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
-import type { ProfileIndex } from "../src/lib/profiles";
+import { createProfileDirectory, type ProfileIndex } from "../src/lib/profiles";
 import { TARGET_REPOSITORIES } from "../src/lib/repositories.mjs";
 import { fixtureCheckout } from "../tests/fixture-checkout";
 import { childEnvironment } from "./child-environment.mjs";
@@ -55,6 +61,7 @@ for (const inputKind of [
         seed ? "data/profiles/seed.json" : "profile-input.json",
       );
       const output = join(root, "public/data/profiles.json");
+      const directory = join(root, "public/data/profile-directory.json");
       const previous = `${JSON.stringify(census(targets))}\n`;
       const value = census(
         inputKind === "current" ? targets : targets.slice(1),
@@ -83,12 +90,17 @@ for (const inputKind of [
       if (inputKind !== "outdated") {
         expect(result.status, result.stderr).toBe(0);
         expect(JSON.parse(readFileSync(output, "utf8"))).toEqual(value);
+        // The site reads the directory published from the same census.
+        expect(JSON.parse(readFileSync(directory, "utf8"))).toEqual(
+          createProfileDirectory(value),
+        );
       } else {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain(
           "Profile repository inventory mismatch",
         );
         expect(readFileSync(output, "utf8")).toBe(previous);
+        expect(existsSync(directory)).toBe(false);
       }
     } finally {
       rmSync(root, { recursive: true, force: true });

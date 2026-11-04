@@ -1,4 +1,7 @@
-import { assertProfiles } from "../../src/lib/profiles";
+import {
+  assertProfileDirectory,
+  createProfileDirectory,
+} from "../../src/lib/profiles";
 import { TARGET_REPOSITORIES } from "../../src/lib/repositories.mjs";
 import { expect, expectAccessible, test } from "./fixtures";
 
@@ -13,6 +16,12 @@ test("profiles preserve legacy coverage and a valid census", async ({
     )
       failures.push(r.url());
   });
+  // The pages read the directory; the complete census is never downloaded.
+  const censusRequests: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === "/data/profiles.json")
+      censusRequests.push(r.url());
+  });
   const walletRequests: string[] = [];
   const expectedWalletRequests = [
     "/api/v1/wallet-claims/actors/1234567/current",
@@ -23,9 +32,9 @@ test("profiles preserve legacy coverage and a valid census", async ({
     return route.fulfill({ json: null });
   });
   const now = new Date().toISOString();
-  await page.route("**/data/profiles.json", (r) =>
+  await page.route("**/data/profile-directory.json", (r) =>
     r.fulfill({
-      json: {
+      json: createProfileDirectory({
         schemaVersion: "1",
         startedAt: now,
         generatedAt: now,
@@ -49,7 +58,7 @@ test("profiles preserve legacy coverage and a valid census", async ({
             ],
           },
         ],
-      },
+      }),
     }),
   );
   await page.goto("/points?view=people&q=profile-only");
@@ -132,11 +141,12 @@ test("profiles preserve legacy coverage and a valid census", async ({
     path: info.outputPath("individual-profile-zoom.png"),
     fullPage: true,
   });
-  await page.unroute("**/data/profiles.json");
-  const response = await page.request.get("/data/profiles.json");
+  await page.unroute("**/data/profile-directory.json");
+  const response = await page.request.get("/data/profile-directory.json");
   expect(response.ok()).toBe(true);
-  const census = await response.json();
-  assertProfiles(census);
+  const published = await response.json();
+  assertProfileDirectory(published);
+  expect(censusRequests).toEqual([]);
   expect(walletRequests).toEqual(expectedWalletRequests);
   expect(failures).toEqual([]);
 });
