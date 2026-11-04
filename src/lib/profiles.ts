@@ -69,6 +69,22 @@ export interface ProfileIssueHistory {
    */
   archived?: ProfileIssue[];
 }
+export const PROFILE_DIRECTORY_FORMAT = "slop-profile-directory-v1";
+export const MAX_PROFILE_DIRECTORY_BYTES = 4 * 1024 * 1024;
+/**
+ * The people and pull-request counts of a census, without its issue history.
+ * The site shows only these, so the publication writes this record beside
+ * the complete census (PRD section 9). The census, with the issue history
+ * that the next collection carries forward, stays the retained input of the
+ * publication pipeline; its format marker keeps this record from being read
+ * as one.
+ */
+export interface ProfileDirectory {
+  format: typeof PROFILE_DIRECTORY_FORMAT;
+  generatedAt: string;
+  repositories: ProfileIndex["repositories"];
+  people: ProfileRecord[];
+}
 /**
  * `targets` defaults to the current active repositories. A previous census
  * may predate an activation or retirement, so its caller passes its own
@@ -79,7 +95,6 @@ export function assertProfiles(
   targets: readonly string[] = TARGET_REPOSITORIES.map((r) => r.id),
 ): asserts value is ProfileIndex {
   const v = value as ProfileIndex;
-  const validCount = (n: number) => Number.isSafeInteger(n) && n >= 0;
   if (
     !v ||
     !["1", "2"].includes(v.schemaVersion) ||
@@ -90,6 +105,46 @@ export function assertProfiles(
     !Array.isArray(v.repositories)
   )
     throw Error("Invalid profile census");
+  assertProfilePeople(v, targets);
+  if (v.schemaVersion === "2") assertProfileIssues(v, targets);
+  else if (v.issues !== undefined)
+    throw Error("Unexpected legacy issue census");
+}
+
+export function createProfileDirectory(index: ProfileIndex): ProfileDirectory {
+  return {
+    format: PROFILE_DIRECTORY_FORMAT,
+    generatedAt: index.generatedAt,
+    repositories: index.repositories.map((row) => ({ ...row })),
+    people: index.people.map((person) => ({
+      ...person,
+      repositories: person.repositories.map((row) => ({ ...row })),
+    })),
+  };
+}
+
+/** The same identity and count checks the site applies to a census. */
+export function assertProfileDirectory(
+  value: unknown,
+  targets: readonly string[] = TARGET_REPOSITORIES.map((r) => r.id),
+): asserts value is ProfileDirectory {
+  const v = value as ProfileDirectory;
+  if (
+    !v ||
+    v.format !== PROFILE_DIRECTORY_FORMAT ||
+    !Number.isFinite(Date.parse(v.generatedAt)) ||
+    !Array.isArray(v.people) ||
+    !Array.isArray(v.repositories)
+  )
+    throw Error("Invalid profile directory");
+  assertProfilePeople(v, targets);
+}
+
+function assertProfilePeople(
+  v: Pick<ProfileIndex, "people" | "repositories">,
+  targets: readonly string[],
+) {
+  const validCount = (n: number) => Number.isSafeInteger(n) && n >= 0;
   // Every collected repository is present. A repository outside the census
   // keeps its last counts only when it is registered or legacy history.
   const inventory = new Set(v.repositories.map((r) => r.repository));
@@ -145,9 +200,6 @@ export function assertProfiles(
       (totals.get(r.repository) ?? 0) + r.excluded !== r.count
     )
       throw Error("Incomplete profile census");
-  if (v.schemaVersion === "2") assertProfileIssues(v, targets);
-  else if (v.issues !== undefined)
-    throw Error("Unexpected legacy issue census");
 }
 
 function assertProfileIssues(index: ProfileIndex, targets: readonly string[]) {

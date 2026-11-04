@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { deploymentOrigins, deploymentTier } from "../../src/lib/deployment";
 import { transactionUrl } from "../../src/lib/payments/contracts";
+import { createProfileDirectory } from "../../src/lib/profiles";
 import { TARGET_REPOSITORIES } from "../../src/lib/repositories.mjs";
 import {
   archivedPaidCycleIndex,
@@ -55,9 +56,9 @@ test("finalized project payments show net assets and source months on cycles and
       json: publishedStandings(snapshot, archivedPaidCycleIndex()),
     }),
   );
-  await page.route("**/data/profiles.json", (route) =>
+  await page.route("**/data/profile-directory.json", (route) =>
     route.fulfill({
-      json: {
+      json: createProfileDirectory({
         schemaVersion: "1",
         startedAt: now,
         generatedAt: now,
@@ -74,7 +75,7 @@ test("finalized project payments show net assets and source months on cycles and
             repositories: [],
           },
         ],
-      },
+      }),
     }),
   );
   await page.route("**/data/cycles/index.json*", (route) =>

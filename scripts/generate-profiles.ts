@@ -1,9 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import {
+  assertProfileDirectory,
   assertProfiles,
   collectedProfileRepositories,
+  createProfileDirectory,
   isCarriedProfileRepository,
+  MAX_PROFILE_DIRECTORY_BYTES,
+  type ProfileDirectory,
   type ProfileIndex,
   type ProfileRecord,
 } from "../src/lib/profiles";
@@ -51,12 +55,31 @@ if (values.current && !values.input)
 if (values.live && values.input)
   throw new Error("Choose live collection or a profile input file.");
 const output = "public/data/profiles.json";
+const directoryOutput = "public/data/profile-directory.json";
 const seed = "data/profiles/seed.json";
 const query = `query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){id pullRequests(first:100,after:$after,orderBy:{field:CREATED_AT,direction:ASC}){totalCount pageInfo{hasNextPage endCursor} nodes{id state author{__typename login avatarUrl ... on User{id}}}}}rateLimit{cost limit remaining resetAt}}`;
-async function publish(path: string, value: ProfileIndex) {
+async function publish(path: string, value: ProfileIndex | ProfileDirectory) {
   await mkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
   await writeFile(`${path}.tmp`, `${JSON.stringify(value)}\n`);
   await rename(`${path}.tmp`, path);
+}
+/**
+ * The site reads the directory, so a census that the site would refuse
+ * stops here instead of on every profile. Without `current`, the census is
+ * a retained input checked against its own inventory only.
+ */
+async function publishDirectory(census: ProfileIndex, current: boolean) {
+  const directory = createProfileDirectory(census);
+  const bytes = `${JSON.stringify(directory)}\n`;
+  if (Buffer.byteLength(bytes) > MAX_PROFILE_DIRECTORY_BYTES)
+    throw new RangeError("Published profile directory exceeds its size limit");
+  const published: unknown = JSON.parse(bytes);
+  assertProfileDirectory(
+    published,
+    census.repositories.map((row) => row.repository),
+  );
+  if (current) assertProfileDirectory(published);
+  await publish(directoryOutput, directory);
 }
 if (values.live) {
   const token = await resolveGitHubToken();
@@ -196,6 +219,7 @@ if (values.live) {
   assertProfiles(result);
   if (values.seed) await publish(seed, result);
   await publish(output, result);
+  await publishDirectory(result, true);
   console.log(`Published ${result.people.length} profiles`);
 } else {
   const value = JSON.parse(await readFile(values.input ?? seed, "utf8"));
@@ -203,4 +227,5 @@ if (values.live) {
   // Readers keep checking it against current targets and report missing data.
   assertPublishedProfiles(value, { current: values.current ?? false });
   await publish(output, value);
+  await publishDirectory(value, values.current ?? false);
 }

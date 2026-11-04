@@ -12,6 +12,7 @@ import type {
   GitHubActor,
   LeaderboardInput,
 } from "../../src/lib/leaderboard-types";
+import { createProfileDirectory } from "../../src/lib/profiles";
 import { TARGET_REPOSITORIES } from "../../src/lib/repositories.mjs";
 import { valueScoringPolicy } from "../../src/lib/scoring-policy";
 import { cycleIndexFixture, publishedStandings } from "../fixtures";
@@ -36,9 +37,9 @@ async function prepareProfile(
   await page.route("**/data/cycles/index.json*", (route) =>
     route.fulfill({ json: cycleIndexFixture() }),
   );
-  await page.route("**/data/profiles.json", (route) =>
+  await page.route("**/data/profile-directory.json", (route) =>
     route.fulfill({
-      json: {
+      json: createProfileDirectory({
         schemaVersion: "1",
         startedAt: VIEWED_AT.toISOString(),
         generatedAt: VIEWED_AT.toISOString(),
@@ -48,7 +49,7 @@ async function prepareProfile(
           excluded: 0,
         })),
         people: directory.map((actor) => ({ ...actor, repositories: [] })),
-      },
+      }),
     }),
   );
   await page.route("**/api/v1/wallet-claims/actors/*/current", (route) =>
@@ -168,9 +169,9 @@ test("the current directory vetoes a renamed or recycled review-only login", asy
   await expect(
     page.getByText("Contributor records are unavailable."),
   ).toBeVisible();
-  await page.route("**/data/profiles.json", (route) =>
+  await page.route("**/data/profile-directory.json", (route) =>
     route.fulfill({
-      json: {
+      json: createProfileDirectory({
         schemaVersion: "1",
         startedAt: VIEWED_AT.toISOString(),
         generatedAt: VIEWED_AT.toISOString(),
@@ -180,7 +181,7 @@ test("the current directory vetoes a renamed or recycled review-only login", asy
           excluded: 0,
         })),
         people: [{ ...REVIEW_ONLY, id: "MDQ6VXNlcjQ1", repositories: [] }],
-      },
+      }),
     }),
   );
   await page.reload({ waitUntil: "networkidle" });

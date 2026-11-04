@@ -5,7 +5,7 @@ import { deriveAllocationFundingBasis } from "../../src/lib/allocation-funding";
 import { assertCycleIndex } from "../../src/lib/cycle-index";
 import { deploymentOrigins, deploymentTier } from "../../src/lib/deployment";
 import { assertLeaderboardSnapshot } from "../../src/lib/leaderboard";
-import { assertProfiles } from "../../src/lib/profiles";
+import { assertProfiles, createProfileDirectory } from "../../src/lib/profiles";
 import { findProject } from "../../src/lib/projects.mjs";
 import { TARGET_REPOSITORIES } from "../../src/lib/repositories.mjs";
 import {
@@ -67,8 +67,8 @@ async function profileRecords(
   assertLeaderboardSnapshot(snapshot);
   assertCycleIndex(cycles);
   assertProfiles(profiles);
-  await page.route("**/data/profiles.json", (r) =>
-    r.fulfill({ json: profiles }),
+  await page.route("**/data/profile-directory.json", (r) =>
+    r.fulfill({ json: createProfileDirectory(profiles) }),
   );
   await page.route("**/data/standings.json?**", (r) =>
     r.fulfill({ json: publishedStandings(snapshot, cycles) }),
@@ -142,7 +142,7 @@ test("warm profiles reuse public records until expiry and recover a failed refre
     if (path === "/data/points.json") reads.index++;
     if (/^\/data\/points\/[0-9a-f]\.json$/u.test(path)) reads.shards++;
     if (path === "/data/points-members.json") reads.members++;
-    if (path === "/data/profiles.json") reads.directory++;
+    if (path === "/data/profile-directory.json") reads.directory++;
     if (path === "/api/v1/points/me") reads.session++;
     if (path === "/api/v1/points/member") reads.member++;
   });
@@ -324,9 +324,9 @@ test("warm reassigned handles wait for fresh identity before wallet and history 
   const sessionReady = new Promise<void>((resolve) => {
     releaseSession = resolve;
   });
-  await page.route("**/data/profiles.json", async (route) => {
+  await page.route("**/data/profile-directory.json", async (route) => {
     if (hold) await directoryReady;
-    await route.fulfill({ json: profiles });
+    await route.fulfill({ json: createProfileDirectory(profiles) });
   });
   await page.route(`${site}/api/v1/points/**`, async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -649,16 +649,16 @@ test("an unavailable identity directory hides historical records until retry suc
   page,
 }) => {
   diagnostics.allow(
-    /^(?:console Failed to load resource: the server responded with a status of 503 \(Service Unavailable\) at |503 GET )http:\/\/[^ ]+\/data\/profiles\.json$/u,
+    /^(?:console Failed to load resource: the server responded with a status of 503 \(Service Unavailable\) at |503 GET )http:\/\/[^ ]+\/data\/profile-directory\.json$/u,
   );
   const { profiles, archived, walletRequests } = await profileRecords(page, {
     directoryOnly: true,
   });
   let unavailable = true;
-  await page.route("**/data/profiles.json", (route) =>
+  await page.route("**/data/profile-directory.json", (route) =>
     unavailable
       ? route.fulfill({ status: 503, body: "Unavailable" })
-      : route.fulfill({ json: profiles }),
+      : route.fulfill({ json: createProfileDirectory(profiles) }),
   );
   await page.goto(`/contributors/${archived.login}`, {
     waitUntil: "networkidle",
@@ -684,7 +684,7 @@ test("a failed profile directory refresh keeps the last verified identity", asyn
   page,
 }, info) => {
   diagnostics.allow(
-    /^(?:console Failed to load resource: the server responded with a status of 503 \(Service Unavailable\) at |503 GET )https:\/\/[^ ]+\/data\/profiles\.json$/u,
+    /^(?:console Failed to load resource: the server responded with a status of 503 \(Service Unavailable\) at |503 GET )https:\/\/[^ ]+\/data\/profile-directory\.json$/u,
   );
   const site = await serveProfileSite(page);
   const { profiles, current } = await profileRecords(page);
@@ -698,10 +698,10 @@ test("a failed profile directory refresh keeps the last verified identity", asyn
     route.fulfill({ json: { transfers: [], totalMicro: "0" } }),
   );
   let unavailable = false;
-  await page.route("**/data/profiles.json", (route) =>
+  await page.route("**/data/profile-directory.json", (route) =>
     unavailable
       ? route.fulfill({ status: 503, body: "Unavailable" })
-      : route.fulfill({ json: profiles }),
+      : route.fulfill({ json: createProfileDirectory(profiles) }),
   );
 
   await page.goto(`${site}/contributors/${current.login}`, {
@@ -1061,16 +1061,18 @@ for (const scenario of [
       route.fulfill({ json: { transfers: [], totalMicro: "0" } }),
     );
     if (scenario === "delayed directory" || reassigned)
-      await page.route("**/data/profiles.json", async (route) => {
+      await page.route("**/data/profile-directory.json", async (route) => {
         await directoryReady;
-        await route.fulfill({ json: profiles });
+        await route.fulfill({ json: createProfileDirectory(profiles) });
       });
     try {
       const memberResponse = page.waitForResponse((response) =>
         new URL(response.url()).pathname.endsWith("/points/member"),
       );
       const directoryResponse = page.waitForResponse((response) =>
-        new URL(response.url()).pathname.endsWith("/data/profiles.json"),
+        new URL(response.url()).pathname.endsWith(
+          "/data/profile-directory.json",
+        ),
       );
       const sessionResponse = page.waitForResponse((response) =>
         new URL(response.url()).pathname.endsWith("/points/me"),
