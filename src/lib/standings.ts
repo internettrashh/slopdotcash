@@ -1,12 +1,13 @@
 /**
  * The small standings record that the publication builds beside the full
- * leaderboard snapshot. The contributor and project pages show only a
- * handful of values from the snapshot: the current leaders, every actor the
- * snapshot names, each project's cycle leaders, the global leader set and the
- * applied penalties. Publishing those values lets the pages skip the complete
- * multi-megabyte ledger (PRD section 9: public pages serve published
- * snapshots). The same functions that the pages used to run in the browser
- * compute every value here, so the rendered output does not change.
+ * leaderboard snapshot. The contributor, project, leaderboard and sponsors
+ * pages show only a handful of values from the snapshot: the current leaders,
+ * every actor the snapshot names, each project's cycle leaders, the global
+ * leader set, the applied penalties and the audience totals. Publishing those
+ * values lets the pages skip the complete multi-megabyte ledger (PRD section
+ * 9: public pages serve published snapshots). The same functions that the
+ * pages used to run in the browser compute every value here, so the rendered
+ * output does not change.
  */
 import type { CycleIndex } from "./cycle-index";
 import { createGlobalLeaders, openMonthScores } from "./global-leaderboard";
@@ -16,6 +17,7 @@ import {
   type LeaderboardSnapshot,
   type PublishedPenalty,
 } from "./leaderboard-types";
+import { summarizeModelOutcomes } from "./model-outcomes";
 import { createProjectView, projectCycleHasOpened } from "./project-view";
 import { PROJECTS } from "./projects.mjs";
 
@@ -48,6 +50,18 @@ export interface StandingsPenalty extends PublishedPenalty {
   appliedThirds: number;
 }
 
+/** The live totals the sponsors page states beside its audience report. */
+export interface StandingsAudience {
+  windowDays: number;
+  /** Contributors on the leaderboard for the window. */
+  contributors: number;
+  /** Scored ledger events across every repository. */
+  scoredEvents: number;
+  mergedPullRequests: number;
+  /** Merged pull requests whose attribution names an exact model. */
+  mergedPullRequestsWithModel: number;
+}
+
 export interface PublishedStandings {
   format: typeof STANDINGS_FORMAT;
   generatedAt: string;
@@ -61,6 +75,7 @@ export interface PublishedStandings {
   /** Actors with a cumulative cross-project leader row. */
   globalLeaderIds: string[];
   penalties: StandingsPenalty[];
+  audience: StandingsAudience;
 }
 
 const DIGEST = /^[a-f0-9]{64}$/u;
@@ -110,6 +125,7 @@ export function createPublishedStandings(
     for (const opportunity of view.opportunities) addActor(opportunity.actor);
   }
   const { deductions } = openMonthScores(snapshot, cycleIndex);
+  const outcomes = summarizeModelOutcomes(snapshot).totals;
   return {
     format: STANDINGS_FORMAT,
     generatedAt: snapshot.generatedAt,
@@ -133,6 +149,13 @@ export function createPublishedStandings(
       ...penalty,
       appliedThirds: deductions.byPenalty.get(penalty.id) ?? 0,
     })),
+    audience: {
+      windowDays: snapshot.window.days,
+      contributors: snapshot.leaders.length,
+      scoredEvents: snapshot.ledger.length,
+      mergedPullRequests: outcomes.mergedPullRequests,
+      mergedPullRequestsWithModel: outcomes.mergedPullRequestsWithModel,
+    },
   };
 }
 
@@ -248,6 +271,29 @@ function isPenalty(value: unknown): value is StandingsPenalty {
   );
 }
 
+function isCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isAudience(value: unknown): value is StandingsAudience {
+  return (
+    isRecord(value) &&
+    exactKeys(value, [
+      "windowDays",
+      "contributors",
+      "scoredEvents",
+      "mergedPullRequests",
+      "mergedPullRequestsWithModel",
+    ]) &&
+    isCount(value.windowDays) &&
+    isCount(value.contributors) &&
+    isCount(value.scoredEvents) &&
+    isCount(value.mergedPullRequests) &&
+    isCount(value.mergedPullRequestsWithModel) &&
+    value.mergedPullRequestsWithModel <= value.mergedPullRequests
+  );
+}
+
 /** Rejects any published standings that do not match this build's contract. */
 export function assertPublishedStandings(
   value: unknown,
@@ -264,6 +310,7 @@ export function assertPublishedStandings(
       "projects",
       "globalLeaderIds",
       "penalties",
+      "audience",
     ]) ||
     !isIso(value.generatedAt) ||
     typeof value.snapshotDigest !== "string" ||
@@ -289,7 +336,9 @@ export function assertPublishedStandings(
     !Array.isArray(value.penalties) ||
     !value.penalties.every(isPenalty) ||
     new Set(value.penalties.map((penalty) => penalty.id)).size !==
-      value.penalties.length
+      value.penalties.length ||
+    !isAudience(value.audience) ||
+    value.audience.contributors !== value.leaders.length
   )
     throw new Error("Invalid published standings");
 }
