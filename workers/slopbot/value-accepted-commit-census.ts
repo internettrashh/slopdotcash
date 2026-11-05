@@ -25,7 +25,51 @@ interface Pull {
     isPrivate: boolean;
   };
   mergeCommit: { oid: string } | null;
+  baseRefOid: string;
+  headRefOid: string;
   commits: Commits;
+}
+const oid = /^[a-f0-9]{40}$/u;
+/** GitHub lists at most 250 commits of a pull request through its commits
+ * connection and route. The immutable base...head comparison paginates the
+ * complete range; it must reconcile with the reported count and every
+ * observed commit, as the evidence collector requires of its own listing.
+ */
+async function completeCommits(
+  github: ValueClient,
+  current: string,
+  pull: Pull,
+  observed: ReadonlySet<string>,
+): Promise<Set<string> | null> {
+  const total = pull.commits.totalCount;
+  if (
+    !oid.test(pull.baseRefOid) ||
+    !oid.test(pull.headRefOid) ||
+    pull.baseRefOid === pull.headRefOid
+  )
+    return null;
+  const shas = new Set<string>();
+  for (let page = 1; page <= Math.ceil(total / 100); page++) {
+    const batch = await github.get<{
+      total_commits: number;
+      commits: { sha: string }[];
+    }>(
+      `/repos/${current}/compare/${pull.baseRefOid}...${pull.headRefOid}?per_page=100&page=${page}`,
+    );
+    if (
+      !batch ||
+      batch.total_commits !== total ||
+      !Array.isArray(batch.commits)
+    )
+      return null;
+    for (const commit of batch.commits) {
+      if (!oid.test(commit.sha) || shas.has(commit.sha)) return null;
+      shas.add(commit.sha);
+    }
+  }
+  if (shas.size !== total) return null;
+  for (const sha of observed) if (!shas.has(sha)) return null;
+  return shas;
 }
 export interface AcceptedCommitCensus {
   ids: Set<string>;
@@ -74,7 +118,7 @@ async function collectRange(
     } = await github.graphql<{
       search: Page<Pull> & { issueCount: number };
     }>(
-      `query($q:String!,$cursor:String){search(query:$q,type:ISSUE,first:100,after:$cursor){issueCount nodes{... on PullRequest{id number url mergedAt repository{id databaseId nameWithOwner isPrivate} mergeCommit{oid} commits(first:100){totalCount nodes{commit{oid}}pageInfo{hasNextPage endCursor}}}}pageInfo{hasNextPage endCursor}}}`,
+      `query($q:String!,$cursor:String){search(query:$q,type:ISSUE,first:100,after:$cursor){issueCount nodes{... on PullRequest{id number url mergedAt repository{id databaseId nameWithOwner isPrivate} mergeCommit{oid} baseRefOid headRefOid commits(first:100){totalCount nodes{commit{oid}}pageInfo{hasNextPage endCursor}}}}pageInfo{hasNextPage endCursor}}}`,
       { q: query, cursor },
     );
     const search = result.search;
@@ -136,7 +180,7 @@ async function collectRange(
       )
         return null;
       ids.add(pull.id);
-      const shas = new Set<string>();
+      let shas = new Set<string>();
       const commitCursors = new Set<string>();
       let commits = pull.commits;
       const total = commits.totalCount;
@@ -144,8 +188,7 @@ async function collectRange(
       for (;;) {
         if (commits.totalCount !== total) return null;
         for (const { commit } of commits.nodes) {
-          if (!/^[a-f0-9]{40}$/u.test(commit.oid) || shas.has(commit.oid))
-            return null;
+          if (!oid.test(commit.oid) || shas.has(commit.oid)) return null;
           shas.add(commit.oid);
         }
         if (!commits.pageInfo.hasNextPage) break;
@@ -168,9 +211,13 @@ async function collectRange(
           return null;
         commits = next.repository.pullRequest.commits;
       }
-      if (shas.size !== total) return null;
+      if (shas.size !== total) {
+        const complete = await completeCommits(github, current, pull, shas);
+        if (complete === null) return null;
+        shas = complete;
+      }
       if (pull.mergeCommit !== null) {
-        if (!/^[a-f0-9]{40}$/u.test(pull.mergeCommit.oid)) return null;
+        if (!oid.test(pull.mergeCommit.oid)) return null;
         shas.add(pull.mergeCommit.oid);
       }
       const carrier = {
