@@ -3257,9 +3257,9 @@
     },
     {
       "path": "scripts/generate-profiles.ts",
-      "sha256": "e2205dc47fc942f81481e6b335df62355d04fd7fc01a998a86040617bee1318e",
+      "sha256": "bac145b1269733bcf3102837b27eb57159a8a063c3c3945e00ae8b43dda97238",
       "models": ["formal/models/points/github_census.qnt"],
-      "candidateLines": [1, 28, 55, 58, 59, 136, 143, 165, 166],
+      "candidateLines": [1, 32, 60, 63, 64, 159, 166, 188, 189],
       "review": "mapped-abstraction"
     },
     {
@@ -4531,16 +4531,16 @@
     },
     {
       "path": "src/Profiles.tsx",
-      "sha256": "af3266bbc447eeb44871946c24a14ff1232db81ea6c09b0614377ef523582bcb",
+      "sha256": "8761d148f3f77f5e8abcb5d29624a310538046b35ad2b2d84318242975243e49",
       "models": [
         "formal/models/ui/ui_calendar_views.qnt",
         "formal/models/ui/ui_resources.qnt"
       ],
       "candidateLines": [
-        1, 61, 62, 69, 75, 76, 78, 83, 111, 113, 114, 124, 144, 145, 150, 152,
-        156, 157, 162, 164, 167, 168, 268, 280, 282, 285, 301, 305, 341, 348,
-        393, 419, 420, 427, 428, 429, 432, 435, 436, 438, 439, 442, 445, 446,
-        455
+        1, 68, 69, 76, 82, 83, 85, 90, 118, 120, 121, 131, 151, 152, 157, 159,
+        163, 164, 169, 171, 174, 175, 275, 287, 289, 292, 308, 312, 348, 355,
+        400, 426, 427, 434, 435, 436, 439, 442, 443, 445, 446, 449, 452, 453,
+        462
       ],
       "review": "mapped-abstraction"
     },
@@ -5336,9 +5336,9 @@
     },
     {
       "path": "src/lib/profiles.ts",
-      "sha256": "007dcdebd8af0abb95152511f290946074fe4381034480286b38763da058d27d",
+      "sha256": "b3ae2883df74aadec496ed0223b293483cee5296625e6c592e22046707af8d35",
       "models": ["formal/models/ui/ui_profile_history.qnt"],
-      "candidateLines": [49, 55, 196, 242, 249, 261, 263, 265, 269, 272],
+      "candidateLines": [49, 55, 248, 294, 301, 313, 315, 317, 321, 324],
       "review": "mapped-abstraction"
     },
     {
@@ -5974,7 +5974,7 @@
     },
     {
       "path": "vite.config.ts",
-      "sha256": "9999d43e16e853d0ac1730348376aee7d92f653a212caaf4167662136a2f23fb",
+      "sha256": "b404c35319654b5bf27a8f70abaea1af6c389a65ef4b02ef338fb10538dd8da5",
       "models": ["formal/models/tooling/dev_server_lifecycle.qnt"],
       "candidateLines": [255],
       "review": "mapped-abstraction"
